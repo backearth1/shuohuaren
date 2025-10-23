@@ -268,6 +268,42 @@ def process_video_pipeline(
             if 'name' not in profile:
                 profile['name'] = f'Speaker {speaker_id}'
 
+        # Step 9: 使用 LLM 自动分配说话人
+        llm_assignment_result = None
+        updated_srt_segments = srt_segments  # 默认使用原始字幕
+
+        if api_key:
+            try:
+                update_progress(90, "使用LLM自动分配说话人...")
+
+                from llm_speaker_assignment import assign_speakers_with_llm, apply_speaker_assignments_to_srt
+
+                # 调用 LLM 进行说话人分配
+                llm_assignment_result = assign_speakers_with_llm(
+                    srt_segments=srt_segments,
+                    speaker_profiles=speaker_profiles,
+                    api_key=api_key,
+                    model="abab6.5s-chat"
+                )
+
+                if llm_assignment_result:
+                    # 将分配结果应用到字幕
+                    updated_srt_segments = apply_speaker_assignments_to_srt(
+                        srt_segments=srt_segments,
+                        assignments=llm_assignment_result
+                    )
+                    print(f"  ✓ LLM说话人分配完成")
+
+                    # 保存带说话人信息的字幕
+                    assigned_srt_path = os.path.join(output_dir, 'subtitle_with_speakers.json')
+                    with open(assigned_srt_path, 'w', encoding='utf-8') as f:
+                        json.dump(updated_srt_segments, f, ensure_ascii=False, indent=2)
+                    print(f"  ✓ 已保存带说话人信息的字幕: {assigned_srt_path}")
+
+            except Exception as e:
+                print(f"  LLM说话人分配失败: {str(e)}")
+                # 继续处理，不中断
+
         update_progress(95, "生成最终结果...")
 
         # 构建最终结果
@@ -284,7 +320,9 @@ def process_video_pipeline(
                 'min_samples': min_samples
             },
             'vlm_enabled': api_key is not None,
-            'vlm_result': vlm_result
+            'vlm_result': vlm_result,
+            'llm_assignment': llm_assignment_result,
+            'srt_with_speakers': updated_srt_segments
         }
 
         update_progress(100, "处理完成！")
