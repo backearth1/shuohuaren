@@ -1,0 +1,47 @@
+========================================
+视频说话人识别与命名系统 - 服务器信息
+========================================
+
+✅ 服务器状态: 运行中（已重启，facenet-pytorch已安装）
+📡 访问地址: http://localhost:5445
+📝 注意: 原定端口5444被占用，自动切换到5445
+🔧 最近更新:
+   - 安装facenet-pytorch，修复人脸检测问题
+   - 添加前端API Key输入框，支持Web界面直接输入API Key
+   - 增强Trace-ID日志输出
+
+使用方法:
+---------
+1. 在浏览器中打开: http://localhost:5445
+2. 上传视频文件（支持MP4, AVI, MOV, MKV）
+3. 上传对应的SRT字幕文件
+4. 点击"开始处理"
+5. 等待处理完成（实时显示进度）
+6. 查看识别结果
+
+API端点:
+--------
+- 首页: GET http://localhost:5445/
+- 上传文件: POST http://localhost:5445/api/upload
+- 查询任务: GET http://localhost:5445/api/task/{task_id}
+- 获取结果: GET http://localhost:5445/api/result/{task_id}
+
+测试:
+-----
+# 快速测试
+cd /data1/devin/test/pyannote_speaker_diarization/speaker_diarization_web
+python test_api_simple.py
+
+# 完整测试（需要修改端口号为5445）
+python test_api.py
+
+停止服务器:
+-----------
+ps aux | grep "python app.py" | grep -v grep | awk '{print $2}' | xargs kill
+
+或者在运行服务器的终端按 Ctrl+C
+
+========================================
+启动时间: 2025-10-22
+进程ID: 可通过 ps aux | grep "python app.py" 查看
+========================================

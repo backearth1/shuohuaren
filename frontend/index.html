@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>视频说话人识别与命名系统</title>
+    <link href="https://cdn.bootcdn.net/ajax/libs/bootstrap/5.3.0/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.bootcdn.net/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <style>
+        body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px 0;
+        }
+        .main-container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .upload-card {
+            background: white;
+            border-radius: 15px;
+            padding: 40px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.1);
+        }
+        .upload-area {
+            border: 3px dashed #667eea;
+            border-radius: 10px;
+            padding: 40px;
+            text-align: center;
+            transition: all 0.3s;
+            cursor: pointer;
+        }
+        .upload-area:hover {
+            background: #f8f9ff;
+            border-color: #764ba2;
+        }
+        .upload-area.dragover {
+            background: #eef2ff;
+            border-color: #667eea;
+        }
+        .speaker-card {
+            background: white;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .face-thumbnail {
+            width: 150px;
+            height: 150px;
+            object-fit: cover;
+            border-radius: 8px;
+            margin: 5px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+        }
+        .progress-container {
+            display: none;
+            margin-top: 30px;
+        }
+        .result-container {
+            display: none;
+            margin-top: 30px;
+        }
+        .badge-role {
+            font-size: 0.9rem;
+            padding: 5px 12px;
+        }
+    </style>
+</head>
+<body>
+    <div class="main-container">
+        <!-- 标题 -->
+        <div class="text-center text-white mb-4">
+            <h1 class="display-4"><i class="fas fa-users"></i> 视频说话人识别系统</h1>
+            <p class="lead">上传视频和字幕，自动识别并命名视频中的说话人</p>
+        </div>
+
+        <!-- 上传区域 -->
+        <div class="upload-card" id="uploadCard">
+            <h3 class="mb-4"><i class="fas fa-cloud-upload-alt"></i> 上传文件</h3>
+
+            <div class="row mb-4">
+                <div class="col-md-6">
+                    <label class="form-label"><i class="fas fa-video"></i> 视频文件</label>
+                    <input type="file" class="form-control" id="videoFile" accept="video/*" required>
+                    <small class="text-muted">支持格式：MP4, AVI, MOV, MKV</small>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label"><i class="fas fa-file-alt"></i> SRT字幕文件</label>
+                    <input type="file" class="form-control" id="srtFile" accept=".srt" required>
+                    <small class="text-muted">必须是SRT格式字幕</small>
+                </div>
+            </div>
+
+            <div class="row mb-4">
+                <div class="col-md-4">
+                    <label class="form-label">
+                        <i class="fas fa-robot"></i> VLM模型提供商
+                    </label>
+                    <select class="form-select" id="vlmProvider">
+                        <option value="qwen">阿里通义千问 (Qwen-VL)</option>
+                        <option value="minimax">MiniMax</option>
+                    </select>
+                    <small class="text-muted">选择用于智能命名的VLM模型</small>
+                </div>
+                <div class="col-md-8">
+                    <label class="form-label">
+                        <i class="fas fa-key"></i> API Key（可选 - 用于VLM智能命名）
+                    </label>
+                    <input type="password" class="form-control" id="apiKey" placeholder="输入对应提供商的API Key以启用智能命名功能">
+                    <small class="text-muted">
+                        留空将跳过VLM命名，仅进行人脸检测和聚类。
+                        <a href="#" id="toggleApiKeyLink">
+                            <i class="fas fa-eye" id="toggleIcon"></i> 显示/隐藏
+                        </a>
+                    </small>
+                </div>
+            </div>
+
+            <div class="text-center">
+                <button class="btn btn-primary btn-lg" id="uploadBtn">
+                    <i class="fas fa-rocket"></i> 开始处理
+                </button>
+            </div>
+        </div>
+
+        <!-- 进度显示 -->
+        <div class="progress-container" id="progressContainer">
+            <div class="upload-card">
+                <h4 class="mb-3"><i class="fas fa-spinner fa-spin"></i> 处理中...</h4>
+                <div class="progress mb-3" style="height: 30px;">
+                    <div class="progress-bar progress-bar-striped progress-bar-animated"
+                         id="progressBar"
+                         role="progressbar"
+                         style="width: 0%">
+                        0%
+                    </div>
+                </div>
+                <p class="text-muted" id="progressMessage">等待开始...</p>
+            </div>
+        </div>
+
+        <!-- 结果展示 -->
+        <div class="result-container" id="resultContainer">
+            <div class="upload-card">
+                <div class="d-flex justify-content-between align-items-center mb-4">
+                    <h3><i class="fas fa-check-circle text-success"></i> 识别结果</h3>
+                    <button class="btn btn-secondary" id="resetBtn">
+                        <i class="fas fa-redo"></i> 重新上传
+                    </button>
+                </div>
+
+                <!-- 概览统计 -->
+                <div class="row mb-4">
+                    <div class="col-md-3">
+                        <div class="card text-center">
+                            <div class="card-body">
+                                <h5 class="card-title">识别人数</h5>
+                                <h2 class="text-primary" id="numSpeakers">-</h2>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card text-center">
+                            <div class="card-body">
+                                <h5 class="card-title">对话片段</h5>
+                                <h2 class="text-info" id="totalSegments">-</h2>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card text-center">
+                            <div class="card-body">
+                                <h5 class="card-title">检测人脸</h5>
+                                <h2 class="text-warning" id="totalFaces">-</h2>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card text-center">
+                            <div class="card-body">
+                                <h5 class="card-title">有效人脸</h5>
+                                <h2 class="text-success" id="validFaces">-</h2>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 说话人列表 -->
+                <h4 class="mb-3"><i class="fas fa-users"></i> 说话人详情</h4>
+                <div id="speakerList"></div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.bootcdn.net/ajax/libs/bootstrap/5.3.0/js/bootstrap.bundle.min.js"></script>
+    <script>
+        let currentTaskId = null;
+        let pollInterval = null;
+
+        // 切换API Key显示/隐藏
+        function toggleApiKeyVisibility() {
+            const apiKeyInput = document.getElementById('apiKey');
+            const toggleIcon = document.getElementById('toggleIcon');
+            if (apiKeyInput.type === 'password') {
+                apiKeyInput.type = 'text';
+                toggleIcon.className = 'fas fa-eye-slash';
+            } else {
+                apiKeyInput.type = 'password';
+                toggleIcon.className = 'fas fa-eye';
+            }
+        }
+
+        async function uploadFiles() {
+            const videoFile = document.getElementById('videoFile').files[0];
+            const srtFile = document.getElementById('srtFile').files[0];
+            const apiKey = document.getElementById('apiKey').value.trim();
+            const vlmProvider = document.getElementById('vlmProvider').value;
+
+            if (!videoFile || !srtFile) {
+                alert('请选择视频和SRT文件');
+                return;
+            }
+
+            // 显示进度
+            document.getElementById('uploadCard').style.display = 'none';
+            document.getElementById('progressContainer').style.display = 'block';
+            document.getElementById('resultContainer').style.display = 'none';
+
+            // 创建FormData
+            const formData = new FormData();
+            formData.append('video', videoFile);
+            formData.append('srt', srtFile);
+
+            // 添加VLM提供商
+            formData.append('vlm_provider', vlmProvider);
+
+            // 添加API Key（如果提供）
+            if (apiKey) {
+                formData.append('api_key', apiKey);
+            }
+
+            try {
+                // 上传文件
+                const response = await fetch('/api/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    currentTaskId = result.task_id;
+                    // 开始轮询任务状态
+                    pollTaskStatus();
+                } else {
+                    alert('上传失败: ' + (result.message || '未知错误'));
+                    resetPage();
+                }
+            } catch (error) {
+                alert('上传失败: ' + error.message);
+                resetPage();
+            }
+        }
+
+        function pollTaskStatus() {
+            pollInterval = setInterval(async () => {
+                try {
+                    const response = await fetch(`/api/task/${currentTaskId}`);
+                    const task = await response.json();
+
+                    // 更新进度条
+                    const progress = task.progress;
+                    const progressBar = document.getElementById('progressBar');
+                    progressBar.style.width = progress + '%';
+                    progressBar.textContent = progress + '%';
+
+                    document.getElementById('progressMessage').textContent = task.message;
+
+                    // 检查状态
+                    if (task.status === 'completed') {
+                        clearInterval(pollInterval);
+                        loadResult();
+                    } else if (task.status === 'failed') {
+                        clearInterval(pollInterval);
+                        alert('处理失败: ' + task.message);
+                        resetPage();
+                    }
+                } catch (error) {
+                    console.error('轮询失败:', error);
+                }
+            }, 1000); // 每秒轮询一次
+        }
+
+        async function loadResult() {
+            try {
+                const response = await fetch(`/api/result/${currentTaskId}`);
+                const result = await response.json();
+
+                // 隐藏进度，显示结果
+                document.getElementById('progressContainer').style.display = 'none';
+                document.getElementById('resultContainer').style.display = 'block';
+
+                // 填充统计信息
+                document.getElementById('numSpeakers').textContent = result.num_speakers;
+                document.getElementById('totalSegments').textContent = result.video_info.total_segments;
+                document.getElementById('totalFaces').textContent = result.video_info.total_faces_detected;
+                document.getElementById('validFaces').textContent = result.video_info.total_faces_valid;
+
+                // 渲染说话人列表
+                renderSpeakers(result.speakers);
+            } catch (error) {
+                alert('加载结果失败: ' + error.message);
+                resetPage();
+            }
+        }
+
+        function renderSpeakers(speakers) {
+            const speakerList = document.getElementById('speakerList');
+            speakerList.innerHTML = '';
+
+            speakers.forEach(speaker => {
+                const roleClass = speaker.role === '主角' ? 'bg-danger' :
+                                 speaker.role === '重要配角' ? 'bg-warning' : 'bg-secondary';
+
+                const card = document.createElement('div');
+                card.className = 'speaker-card';
+                card.innerHTML = `
+                    <div class="row">
+                        <div class="col-md-3">
+                            <h5>
+                                ${speaker.name || 'Speaker ' + speaker.speaker_id}
+                                ${speaker.role ? `<span class="badge ${roleClass} badge-role">${speaker.role}</span>` : ''}
+                            </h5>
+                            <p class="text-muted mb-1">
+                                <i class="fas fa-${speaker.gender === '男' ? 'mars' : speaker.gender === '女' ? 'venus' : 'genderless'}"></i>
+                                ${speaker.gender || '未知'} | ${speaker.appearance?.age_estimate || '年龄未知'}
+                            </p>
+                            <p class="text-muted mb-1">
+                                <i class="fas fa-image"></i> ${speaker.face_count} 张人脸
+                            </p>
+                            <p class="text-muted">
+                                <i class="fas fa-comments"></i> ${speaker.segment_count} 个片段
+                            </p>
+                        </div>
+                        <div class="col-md-5">
+                            ${speaker.appearance ? `
+                                <h6>外观特征</h6>
+                                <ul class="small">
+                                    ${speaker.appearance.clothing ? `<li><strong>服装：</strong>${speaker.appearance.clothing}</li>` : ''}
+                                    ${speaker.appearance.facial_features ? `<li><strong>面部：</strong>${speaker.appearance.facial_features}</li>` : ''}
+                                    ${speaker.appearance.distinctive_features ? `<li><strong>显著特征：</strong>${speaker.appearance.distinctive_features}</li>` : ''}
+                                </ul>
+                            ` : ''}
+                            ${speaker.character_analysis ? `
+                                <h6>角色分析</h6>
+                                <p class="small">${speaker.character_analysis.personality || ''}</p>
+                            ` : ''}
+                        </div>
+                        <div class="col-md-12">
+                            <h6>代表性画面（红框标注目标人物）</h6>
+                            <div class="face-gallery" style="display: flex; flex-wrap: wrap; gap: 15px;">
+                                ${speaker.face_images ? speaker.face_images.map((img, idx) =>
+                                    `<img src="/results/${currentTaskId}/${img}"
+                                          class="face-thumbnail"
+                                          alt="${speaker.name} - 画面${idx+1}"
+                                          title="代表画面 ${idx+1}"
+                                          style="max-width: 400px; height: auto; border: 2px solid #ddd; border-radius: 8px; cursor: pointer;"
+                                          onclick="window.open(this.src, '_blank')">`
+                                ).join('') : '无图片'}
+                            </div>
+                            <small class="text-muted">共检测到 ${speaker.face_count} 张人脸，此处展示最清晰的2张完整画面。点击图片可放大查看。</small>
+                        </div>
+                    </div>
+                `;
+                speakerList.appendChild(card);
+            });
+        }
+
+        function resetPage() {
+            if (pollInterval) {
+                clearInterval(pollInterval);
+            }
+            document.getElementById('uploadCard').style.display = 'block';
+            document.getElementById('progressContainer').style.display = 'none';
+            document.getElementById('resultContainer').style.display = 'none';
+            document.getElementById('videoFile').value = '';
+            document.getElementById('srtFile').value = '';
+            currentTaskId = null;
+        }
+
+        // 页面加载完成后绑定事件
+        document.addEventListener('DOMContentLoaded', function() {
+            // 绑定上传按钮点击事件
+            document.getElementById('uploadBtn').addEventListener('click', uploadFiles);
+
+            // 绑定重置按钮点击事件
+            document.getElementById('resetBtn').addEventListener('click', resetPage);
+
+            // 绑定API Key显示/隐藏链接
+            document.getElementById('toggleApiKeyLink').addEventListener('click', function(e) {
+                e.preventDefault();
+                toggleApiKeyVisibility();
+            });
+        });
+    </script>
+</body>
+</html>
