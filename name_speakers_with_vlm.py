@@ -481,10 +481,8 @@ def call_minimax_vlm(image_paths, prompt, api_key, model="MiniMax-Text-01"):
         "Content-Type": "application/json"
     }
 
-    # 构建content：先文本，再图片
-    content_items = [
-        {"type": "text", "text": prompt}
-    ]
+    # 构建content：先图片，再文本（与千问保持一致）
+    content_items = []
 
     # 添加所有图片（base64格式）
     for img_path in image_paths:
@@ -495,6 +493,12 @@ def call_minimax_vlm(image_paths, prompt, api_key, model="MiniMax-Text-01"):
                 "url": f"data:image/jpeg;base64,{img_base64}"
             }
         })
+
+    # 添加文本prompt
+    content_items.append({
+        "type": "text",
+        "text": prompt
+    })
 
     messages = [
         {
